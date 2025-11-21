@@ -1,0 +1,5 @@
+{
+  "name": "双视影院",
+  "description": "一个分屏视频工作台，允许用户同时加载、观看和控制两个视频（支持本地文件、MP4、WebM、HLS/直播流），并支持画中画模式。",
+  "requestFramePermissions": []
+}
