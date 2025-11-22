@@ -25,6 +25,7 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
   const containerRef = useRef<HTMLDivElement>(null);
   
   const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(1); // 0.0 to 1.0 internally
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -104,6 +105,8 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
       } else {
         videoRef.current!.src = source.url;
       }
+      // Apply volume
+      if(videoRef.current) videoRef.current.volume = volume;
     };
 
     loadSource();
@@ -152,9 +155,9 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
     const trimmed = input.trim();
     let name = 'Web Video';
     
+    // --- 1. Chaturbate ---
     const ignoredPaths = ['in', 'auth', 'tags', 'terms', 'privacy', 'dmca', 'jobs', 'support', 'apps', 'contest', 'tipping', 'external_link'];
     const cbMatch = trimmed.match(/(?:[\w-]+\.)?chaturbate\.com\/(?:in\/|p\/|b\/)?([a-zA-Z0-9_\-]+)/i);
-    
     if (cbMatch && !trimmed.includes('.m3u8')) {
       const possibleUser = cbMatch[1];
       if (possibleUser && !ignoredPaths.includes(possibleUser)) {
@@ -166,11 +169,13 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
       }
     }
 
+    // --- 2. NudeVista ---
     const nvMatch = trimmed.match(/(?:[\w-]+\.)?nudevista\.com/i);
     if (nvMatch) {
       return { url: trimmed, type: 'embed', name: 'NudeVista' };
     }
 
+    // --- 3. YouTube ---
     const ytMatch = trimmed.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w\-]+)/i);
     if (ytMatch) {
       return {
@@ -180,6 +185,7 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
       };
     }
 
+    // --- 4. Twitch ---
     const twitchMatch = trimmed.match(/twitch\.tv\/([\w\-]+)/i);
     if (twitchMatch) {
       const username = twitchMatch[1];
@@ -191,6 +197,56 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
       };
     }
 
+    // --- 5. Bilibili ---
+    const biliMatch = trimmed.match(/bilibili\.com\/video\/(BV\w+)/i);
+    if (biliMatch) {
+      return {
+        url: `https://player.bilibili.com/player.html?bvid=${biliMatch[1]}&high_quality=1&danmaku=0&autoplay=1`,
+        type: 'embed',
+        name: `Bilibili: ${biliMatch[1]}`
+      };
+    }
+
+    // --- 6. Tencent Video (QQ) ---
+    const qqMatch = trimmed.match(/v\.qq\.com\/.*\/([a-zA-Z0-9]+)\.html/i);
+    if (qqMatch) {
+      return {
+        url: `https://v.qq.com/txp/iframe/player.html?vid=${qqMatch[1]}&autoplay=true`,
+        type: 'embed',
+        name: '腾讯视频'
+      };
+    }
+
+    // --- 7. Youku ---
+    const youkuMatch = trimmed.match(/id_([a-zA-Z0-9=]+)/i);
+    if (youkuMatch) {
+       return {
+         url: `https://player.youku.com/embed/${youkuMatch[1]}?autoplay=true`,
+         type: 'embed',
+         name: '优酷'
+       };
+    }
+
+    // --- 8. Telegram ---
+    const tgMatch = trimmed.match(/t\.me\/([^\/]+)\/(\d+)/i);
+    if (tgMatch) {
+      return {
+        url: `https://t.me/${tgMatch[1]}/${tgMatch[2]}?embed=1&mode=tme`,
+        type: 'embed',
+        name: `TG: ${tgMatch[1]}`
+      };
+    }
+
+    // --- 9. iQIYI ---
+    if (trimmed.includes('iqiyi.com')) {
+       return {
+         url: trimmed,
+         type: 'embed',
+         name: '爱奇艺'
+       };
+    }
+
+    // --- 10. Standard Files / HLS ---
     try {
       const urlObj = new URL(trimmed);
       const filename = urlObj.pathname.split('/').pop();
@@ -250,6 +306,13 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
   };
 
   // --- Recording Logic ---
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
   const initiateRecording = () => {
     if (isRecording) {
       stopRecording();
@@ -280,7 +343,6 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
           inputStream = await navigator.mediaDevices.getDisplayMedia(constraints);
           stream = inputStream;
 
-          // If Crop is active, we need to pipe this stream through a canvas crop
           if (recordConfig.type === 'crop' && cropRect) {
             stream = await startCroppedTabStream(inputStream, cropRect);
           }
@@ -459,13 +521,6 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
     return canvasStream;
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
   const saveRecording = async () => {
     if (chunksRef.current.length === 0) return;
 
@@ -484,6 +539,7 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
             accept: { 'video/webm': ['.webm'] },
           }],
         });
+        
         // @ts-ignore
         const writable = await handle.createWritable();
         await writable.write(blob);
@@ -530,6 +586,26 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
     }
   };
 
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolumeInt = parseInt(e.target.value, 10);
+    const newVolume = newVolumeInt / 100;
+    
+    setVolume(newVolume);
+    
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume;
+      
+      if (newVolume > 0 && isMuted) {
+        videoRef.current.muted = false;
+        setIsMuted(false);
+      }
+      if (newVolume === 0 && !isMuted) {
+         videoRef.current.muted = true;
+         setIsMuted(true);
+      }
+    }
+  };
+
   const togglePiPLocal = async () => {
       if (!videoRef.current) return;
       try {
@@ -563,6 +639,15 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
     }
     if (url.includes('nudevista.com')) {
       return "scale-[1.1] origin-center";
+    }
+    if (url.includes('bilibili.com')) {
+      return "scale-[1.02] origin-center"; 
+    }
+    if (url.includes('iqiyi.com')) {
+      return "scale-[1.1] origin-top"; 
+    }
+    if (url.includes('t.me')) {
+      return "scale-[1.5] origin-center"; 
     }
     return "scale-[1.15] origin-center"; 
   };
@@ -722,7 +807,7 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
                 type="text"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="粘贴链接 (Chaturbate, YouTube...)"
+                placeholder="粘贴链接 (Chaturbate, YouTube, B站...)"
                 className="w-full bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
                 onKeyDown={(e) => e.key === 'Enter' && handleUrlSubmit()}
               />
@@ -744,9 +829,9 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
               <iframe
                 src={source.url}
                 className={`w-full h-full border-0 ${getEmbedStyle(source.url)}`}
-                allow="autoplay; encrypted-media; picture-in-picture; fullscreen" 
+                allow="autoplay; encrypted-media; picture-in-picture; fullscreen; popups; forms" 
                 referrerPolicy="no-referrer"
-                sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+                sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-forms"
               />
               
               <div className="absolute top-0 left-0 p-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -847,9 +932,22 @@ export const VideoPlayer = forwardRef<PlayerRef, VideoPlayerProps>(({ source, on
                           {isRecording ? <Square size={18} fill="currentColor" /> : <Disc size={18} />}
                        </button>
 
-                       <button onClick={toggleMute} className="hover:text-indigo-400 transition-colors" title={isMuted ? "取消静音" : "静音"}>
-                          {isMuted ? <VolumeX size={18}/> : <Volume2 size={18}/>}
-                       </button>
+                       {/* Volume Control with Slider 0-100 */}
+                       <div className="flex items-center gap-1 group/vol">
+                         <button onClick={toggleMute} className="hover:text-indigo-400 transition-colors" title={isMuted ? "取消静音" : "静音"}>
+                            {isMuted || volume === 0 ? <VolumeX size={18}/> : <Volume2 size={18}/>}
+                         </button>
+                         <input 
+                           type="range" 
+                           min="0" 
+                           max="100" 
+                           step="1"
+                           value={isMuted ? 0 : Math.round(volume * 100)}
+                           onChange={handleVolumeChange}
+                           className="w-24 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-indigo-500 [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:scale-125 transition-all"
+                           title={`音量: ${isMuted ? 0 : Math.round(volume * 100)}%`}
+                         />
+                       </div>
                        
                        <button onClick={togglePiPLocal} className="hover:text-indigo-400 transition-colors" title="画中画">
                           <PictureInPicture size={18}/>

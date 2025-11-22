@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { VideoPlayer } from './components/VideoPlayer';
 import { ControlBar } from './components/ControlBar';
 import type { PlayerRef, VideoSource } from './types';
-import { MonitorPlay, Sun, Moon, Monitor, EyeOff, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { MonitorPlay, Sun, Moon, Monitor, EyeOff, X, ChevronUp, ChevronDown, Minimize } from 'lucide-react';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -212,6 +212,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col text-slate-900 dark:text-slate-100 transition-colors duration-300 overflow-hidden relative">
       
+      {/* Floating Exit Fullscreen Button - Visible only when in Fullscreen AND (Immersive OR Header Hidden) */}
+      {isFullscreen && (immersiveMode || !showHeader) && (
+        <button
+          onClick={toggleFullscreen}
+          className={`fixed top-2 z-50 p-2 bg-black/50 hover:bg-indigo-600 text-white/50 hover:text-white rounded-full backdrop-blur-sm transition-all shadow-lg group ${immersiveMode ? 'right-14' : 'right-2'}`}
+          title="退出全屏"
+        >
+          <Minimize size={20} />
+        </button>
+      )}
+
       {/* Floating Exit Immersive Button */}
       {immersiveMode && (
         <button
@@ -286,6 +297,17 @@ export default function App() {
                 <Monitor size={16} />
               </button>
             </div>
+
+            {/* Exit Fullscreen (Header Button) */}
+            {isFullscreen && (
+              <button
+                onClick={toggleFullscreen}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 ml-2 border border-slate-200 dark:border-slate-600"
+                title="退出全屏"
+              >
+                <Minimize size={20} />
+              </button>
+            )}
 
             {/* Hide Header Button */}
             <button 
